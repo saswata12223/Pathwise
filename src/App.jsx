@@ -37,19 +37,37 @@ const navItems = [
   { name: 'Focus planner', icon: Focus },
 ]
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+let csrfTokenCache = ''
+
+function apiUrl(path) {
+  return `${API_BASE_URL}${path}`
+}
+
+async function getCsrfToken() {
+  const response = await fetch(apiUrl('/api/auth/csrf/'), {
+    credentials: API_BASE_URL ? 'include' : 'same-origin',
+  })
+  if (!response.ok) throw new Error('Could not initialize a secure session. Please try again.')
+  const data = await response.json()
+  csrfTokenCache = data.csrfToken
+  return csrfTokenCache
+}
+
 async function apiFetch(url, options = {}) {
   const method = options.method || 'GET'
   const headers = new Headers(options.headers || {})
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) {
-    let csrfToken = document.cookie.split('; ').find((cookie) => cookie.startsWith('csrftoken='))?.split('=').slice(1).join('=')
-    if (!csrfToken) {
-      const csrfResponse = await fetch('/api/auth/csrf/', { credentials: 'same-origin' })
-      if (!csrfResponse.ok) throw new Error('Could not initialize a secure session. Please try again.')
-      csrfToken = (await csrfResponse.json()).csrfToken
-    }
-    headers.set('X-CSRFToken', decodeURIComponent(csrfToken))
+    const cookieToken = document.cookie.split('; ').find((cookie) => cookie.startsWith('csrftoken='))?.split('=').slice(1).join('=')
+    const csrfToken = csrfTokenCache || (cookieToken && decodeURIComponent(cookieToken)) || await getCsrfToken()
+    headers.set('X-CSRFToken', csrfToken)
   }
-  return fetch(url, { ...options, method, headers, credentials: 'same-origin' })
+  return fetch(apiUrl(url), {
+    ...options,
+    method,
+    headers,
+    credentials: API_BASE_URL ? 'include' : 'same-origin',
+  })
 }
 
 function App() {
@@ -79,7 +97,7 @@ function App() {
 
   useEffect(() => {
     let active = true
-    apiFetch('/api/auth/csrf/')
+    getCsrfToken()
       .then(() => apiFetch('/api/auth/me/'))
       .then((response) => response.json())
       .then((data) => { if (active) setUser(data.user) })
@@ -192,7 +210,7 @@ function App() {
     const formData = new FormData()
     formData.append('file', file)
     try {
-      const response = await fetch('/api/scan-syllabus/', { method: 'POST', body: formData })
+      const response = await apiFetch('/api/scan-syllabus/', { method: 'POST', body: formData })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Unable to scan this file.')
       setScanResult(data)
@@ -209,7 +227,7 @@ function App() {
   const generateCareerPlan = async () => {
     setIsGenerating(true)
     try {
-      const response = await fetch('/api/career-roadmap/', {
+      const response = await apiFetch('/api/career-roadmap/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ career: selectedCareer }),

@@ -1,9 +1,22 @@
 from pathlib import Path
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = "development-only-change-before-deploying"
-DEBUG = True
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "local-development-only-change-before-deploying")
+DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+
+
+def _environment_list(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+ALLOWED_HOSTS = _environment_list("ALLOWED_HOSTS", ["localhost", "127.0.0.1"])
+render_hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
 
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -40,7 +53,15 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-CORS_ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+CORS_ALLOWED_ORIGINS = _environment_list(
+    "CORS_ALLOWED_ORIGINS",
+    ["http://localhost:5173", "http://127.0.0.1:5173"],
+)
+CSRF_TRUSTED_ORIGINS = _environment_list("CSRF_TRUSTED_ORIGINS", CORS_ALLOWED_ORIGINS)
+CORS_ALLOW_CREDENTIALS = True
 CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
